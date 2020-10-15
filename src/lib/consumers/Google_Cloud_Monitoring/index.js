@@ -43,36 +43,46 @@ module.exports = function (context) {
     const projectId = context.config.projectId;
     const options = {};
     let Authorization;
-    const newJwt = jwt.sign(
-        {
-            iss: context.config.serviceEmail,
-            scope: 'https://www.googleapis.com/auth/monitoring',
-            aud: 'https://oauth2.googleapis.com/token',
-            exp: Math.floor(Date.now() / 1000) + 3600,
-            iat: Math.floor(Date.now() / 1000)
-        },
-        context.config.privateKey,
-        {
-            algorithm: 'RS256',
-            header: {
-                kid: context.config.privateKeyId,
-                typ: 'JWT',
-                alg: 'RS256'
+    if (context.config.privateKeyId && context.config.privateKey && context.config.serviceEmail) {
+        const newJwt = jwt.sign(
+            {
+                iss: context.config.serviceEmail,
+                scope: 'https://www.googleapis.com/auth/monitoring',
+                aud: 'https://oauth2.googleapis.com/token',
+                exp: Math.floor(Date.now() / 1000) + 3600,
+                iat: Math.floor(Date.now() / 1000)
+            },
+            context.config.privateKey,
+            {
+                algorithm: 'RS256',
+                header: {
+                    kid: context.config.privateKeyId,
+                    typ: 'JWT',
+                    alg: 'RS256'
+                }
             }
-        }
-    );
-    options.method = 'POST';
-    options.headers = {};
-    options.fullURI = 'https://oauth2.googleapis.com/token';
-    options.form = {
-        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-        assertion: newJwt
-    };
-    options.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+        );
+        options.method = 'POST';
+        options.headers = {};
+        options.fullURI = 'https://oauth2.googleapis.com/token';
+        options.form = {
+            grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+            assertion: newJwt
+        };
+        options.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+    } else {
+        // Fallback: in absence of explicit credentials use the credentials for
+        // instance service account
+        options.method = 'GET';
+        options.headers = {};
+        options.headers['Metadata-Flavor'] = 'Google';
+        options.fullURI = 'http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token';
+    }
 
     return util.makeRequest(options)
         .then((result) => {
             delete options.headers['Content-Type'];
+            delete options.headers['Metadata-Flavor'];
             delete options.form;
             Authorization = `Bearer ${result.access_token}`;
             options.headers.Authorization = Authorization;
